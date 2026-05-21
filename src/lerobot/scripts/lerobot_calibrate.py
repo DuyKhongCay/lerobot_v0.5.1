@@ -19,9 +19,14 @@ Requires: pip install 'lerobot[hardware]'
 
 Example:
 
+lerobot-calibrate \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=DuyKhongCay
+
 ```shell
 lerobot-calibrate \
-    --teleop.type=so100_leader \
+    --teleop.type=so101_follower \
     --teleop.port=/dev/tty.usbmodem58760431551 \
     --teleop.id=blue
 ```

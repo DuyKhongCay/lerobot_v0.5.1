@@ -23,3 +23,5 @@ from ..config import TeleoperatorConfig
 @dataclass
 class GamepadTeleopConfig(TeleoperatorConfig):
     use_gripper: bool = True
+    controller: str = "logitech"
+    use_hid: bool | None = None

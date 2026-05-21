@@ -76,14 +76,24 @@ class GamepadTeleop(Teleoperator):
         return {}
 
     def connect(self) -> None:
-        # use HidApi for macos
-        if sys.platform == "darwin":
+        # use HidApi for macos, or for controllers that only have a HID descriptor here.
+        use_hid = self.config.use_hid
+        if use_hid is None:
+            use_hid = sys.platform == "darwin" or self.config.controller == "dunefox"
+
+        if use_hid:
             # NOTE: On macOS, pygame doesn’t reliably detect input from some controllers so we fall back to hidapi
+            from .gamepad_report_descriptors import get_hid_report_descriptor
             from .gamepad_utils import GamepadControllerHID as Gamepad
+
+            report_descriptor = get_hid_report_descriptor(self.config.controller)
         else:
+            from .gamepad_report_descriptors import get_pygame_report_descriptor
             from .gamepad_utils import GamepadController as Gamepad
 
-        self.gamepad = Gamepad()
+            report_descriptor = get_pygame_report_descriptor(self.config.controller)
+
+        self.gamepad = Gamepad(report_descriptor=report_descriptor)
         self.gamepad.start()
 
     @check_if_not_connected

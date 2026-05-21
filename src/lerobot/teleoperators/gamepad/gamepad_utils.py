@@ -20,6 +20,55 @@ from typing import TYPE_CHECKING
 from lerobot.utils.import_utils import _hidapi_available, _pygame_available, require_package
 
 from ..utils import TeleopEvents
+from .gamepad_report_descriptors import (
+    DUNEFOX_HID_REPORT_DESCRIPTOR,
+    HID_REPORT_DESCRIPTORS,
+    LOGITECH_HID_REPORT_DESCRIPTOR,
+    LOGITECH_PYGAME_REPORT_DESCRIPTOR,
+    PYGAME_REPORT_DESCRIPTORS,
+    GamepadActionMapping,
+    GamepadMotionMapping,
+    HIDAxisBinding,
+    HIDButtonBinding,
+    HIDDpadBinding,
+    HIDGamepadReportDescriptor,
+    ParsedGamepadReport,
+    PygameAxisBinding,
+    PygameGamepadReportDescriptor,
+    episode_status_from_button,
+    episode_status_from_buttons,
+    get_hid_report_descriptor,
+    get_pygame_report_descriptor,
+    parse_hid_gamepad_report,
+    read_pygame_gamepad_state,
+)
+
+__all__ = [
+    "DUNEFOX_HID_REPORT_DESCRIPTOR",
+    "HID_REPORT_DESCRIPTORS",
+    "LOGITECH_HID_REPORT_DESCRIPTOR",
+    "LOGITECH_PYGAME_REPORT_DESCRIPTOR",
+    "PYGAME_REPORT_DESCRIPTORS",
+    "GamepadActionMapping",
+    "GamepadController",
+    "GamepadControllerHID",
+    "GamepadMotionMapping",
+    "HIDAxisBinding",
+    "HIDButtonBinding",
+    "HIDDpadBinding",
+    "HIDGamepadReportDescriptor",
+    "InputController",
+    "KeyboardController",
+    "ParsedGamepadReport",
+    "PygameAxisBinding",
+    "PygameGamepadReportDescriptor",
+    "episode_status_from_button",
+    "episode_status_from_buttons",
+    "get_hid_report_descriptor",
+    "get_pygame_report_descriptor",
+    "parse_hid_gamepad_report",
+    "read_pygame_gamepad_state",
+]
 
 if TYPE_CHECKING or _pygame_available:
     import pygame
@@ -211,12 +260,22 @@ class KeyboardController(InputController):
 class GamepadController(InputController):
     """Generate motion deltas from gamepad input."""
 
-    def __init__(self, x_step_size=1.0, y_step_size=1.0, z_step_size=1.0, deadzone=0.1):
+    def __init__(
+        self,
+        x_step_size=1.0,
+        y_step_size=1.0,
+        z_step_size=1.0,
+        deadzone=0.1,
+        report_descriptor: PygameGamepadReportDescriptor | None = None,
+    ):
         require_package("pygame", extra="gamepad")
         super().__init__(x_step_size, y_step_size, z_step_size)
         self.deadzone = deadzone
+        self.report_descriptor = report_descriptor or LOGITECH_PYGAME_REPORT_DESCRIPTOR
         self.joystick = None
         self.intervention_flag = False
+        self.axes = {name: 0.0 for name in self.report_descriptor.axes}
+        self.buttons = {name: False for name in self.report_descriptor.buttons}
 
     def start(self):
         """Initialize pygame and the gamepad."""
@@ -230,7 +289,10 @@ class GamepadController(InputController):
 
         self.joystick = pygame.joystick.Joystick(0)
         self.joystick.init()
-        logging.info(f"Initialized gamepad: {self.joystick.get_name()}")
+        logging.info(
+            f"Initialized gamepad: {self.joystick.get_name()} "
+            f"with {self.report_descriptor.name} descriptor"
+        )
 
         print("Gamepad controls:")
         print("  Left analog stick: Move in X-Y plane")
@@ -250,68 +312,41 @@ class GamepadController(InputController):
 
     def update(self):
         """Process pygame events to get fresh gamepad readings."""
+        if self.joystick is None:
+            return
+
         for event in pygame.event.get():
             if event.type == pygame.JOYBUTTONDOWN:
-                if event.button == 3:
-                    self.episode_end_status = TeleopEvents.SUCCESS
-                # A button (1) for failure
-                elif event.button == 1:
-                    self.episode_end_status = TeleopEvents.FAILURE
-                # X button (0) for rerecord
-                elif event.button == 0:
-                    self.episode_end_status = TeleopEvents.RERECORD_EPISODE
-
-                # RB button (6) for closing gripper
-                elif event.button == 6:
-                    self.close_gripper_command = True
-
-                # LT button (7) for opening gripper
-                elif event.button == 7:
-                    self.open_gripper_command = True
+                button_name = self.report_descriptor.button_name(event.button)
+                episode_status = episode_status_from_button(button_name, self.report_descriptor.actions)
+                if episode_status is not None:
+                    self.episode_end_status = episode_status
 
             # Reset episode status on button release
             elif event.type == pygame.JOYBUTTONUP:
-                if event.button in [0, 2, 3]:
+                button_name = self.report_descriptor.button_name(event.button)
+                if episode_status_from_button(button_name, self.report_descriptor.actions) is not None:
                     self.episode_end_status = None
 
-                elif event.button == 6:
-                    self.close_gripper_command = False
-
-                elif event.button == 7:
-                    self.open_gripper_command = False
-
-            # Check for RB button (typically button 5) for intervention flag
-            if self.joystick.get_button(5):
-                self.intervention_flag = True
-            else:
-                self.intervention_flag = False
+        try:
+            parsed_report = read_pygame_gamepad_state(self.joystick, self.report_descriptor, self.deadzone)
+            self.axes = parsed_report.axes
+            self.buttons = parsed_report.buttons
+            actions = self.report_descriptor.actions
+            self.intervention_flag = self.buttons.get(actions.intervention, False)
+            self.open_gripper_command = self.buttons.get(actions.open_gripper, False)
+            self.close_gripper_command = self.buttons.get(actions.close_gripper, False)
+        except pygame.error:
+            logging.error("Error reading gamepad. Is it still connected?")
 
     def get_deltas(self):
         """Get the current movement deltas from gamepad state."""
-        try:
-            # Read joystick axes
-            # Left stick X and Y (typically axes 0 and 1)
-            y_input = self.joystick.get_axis(0)  # Up/Down (often inverted)
-            x_input = self.joystick.get_axis(1)  # Left/Right
-
-            # Right stick Y (typically axis 3 or 4)
-            z_input = self.joystick.get_axis(3)  # Up/Down for Z
-
-            # Apply deadzone to avoid drift
-            x_input = 0 if abs(x_input) < self.deadzone else x_input
-            y_input = 0 if abs(y_input) < self.deadzone else y_input
-            z_input = 0 if abs(z_input) < self.deadzone else z_input
-
-            # Calculate deltas (note: may need to invert axes depending on controller)
-            delta_x = -x_input * self.x_step_size  # Forward/backward
-            delta_y = -y_input * self.y_step_size  # Left/right
-            delta_z = -z_input * self.z_step_size  # Up/down
-
-            return delta_x, delta_y, delta_z
-
-        except pygame.error:
-            logging.error("Error reading gamepad. Is it still connected?")
-            return 0.0, 0.0, 0.0
+        return self.report_descriptor.motion.get_deltas(
+            self.axes,
+            self.x_step_size,
+            self.y_step_size,
+            self.z_step_size,
+        )
 
 
 class GamepadControllerHID(InputController):
@@ -323,6 +358,7 @@ class GamepadControllerHID(InputController):
         y_step_size=1.0,
         z_step_size=1.0,
         deadzone=0.1,
+        report_descriptor: HIDGamepadReportDescriptor | None = None,
     ):
         """
         Initialize the HID gamepad controller.
@@ -335,6 +371,7 @@ class GamepadControllerHID(InputController):
         require_package("hidapi", extra="gamepad", import_name="hid")
         super().__init__(x_step_size, y_step_size, z_step_size)
         self.deadzone = deadzone
+        self.report_descriptor = report_descriptor or LOGITECH_HID_REPORT_DESCRIPTOR
         self.device = None
         self.device_info = None
 
@@ -345,18 +382,18 @@ class GamepadControllerHID(InputController):
         self.right_y = 0.0
 
         # Button states
-        self.buttons = {}
+        self.axes = {name: 0.0 for name in self.report_descriptor.axes}
+        self.buttons = {name: False for name in self.report_descriptor.buttons}
 
     def find_device(self):
         """Look for the gamepad device by vendor and product ID."""
         devices = hid.enumerate()
         for device in devices:
-            device_name = device["product_string"]
-            if any(controller in device_name for controller in ["Logitech", "Xbox", "PS4", "PS5"]):
+            if self.report_descriptor.matches_device(device):
                 return device
 
         logging.error(
-            "No gamepad found, check the connection and the product string in HID to add your gamepad"
+            f"No gamepad found for {self.report_descriptor.name}, check the connection and descriptor"
         )
         return None
 
@@ -375,7 +412,10 @@ class GamepadControllerHID(InputController):
 
             manufacturer = self.device.get_manufacturer_string()
             product = self.device.get_product_string()
-            logging.info(f"Connected to {manufacturer} {product}")
+            logging.info(
+                f"Connected to {manufacturer} {product} "
+                f"with {self.report_descriptor.name} descriptor"
+            )
 
             logging.info("Gamepad controls (HID mode):")
             logging.info("  Left analog stick: Move in X-Y plane")
@@ -411,53 +451,32 @@ class GamepadControllerHID(InputController):
         try:
             # Read data from the gamepad
             data = self.device.read(64)
-            # Interpret gamepad data - this will vary by controller model
-            # These offsets are for the Logitech RumblePad 2
-            if data and len(data) >= 8:
-                # Normalize joystick values from 0-255 to -1.0-1.0
-                self.left_y = (data[1] - 128) / 128.0
-                self.left_x = (data[2] - 128) / 128.0
-                self.right_x = (data[3] - 128) / 128.0
-                self.right_y = (data[4] - 128) / 128.0
+            parsed_report = parse_hid_gamepad_report(data, self.report_descriptor, self.deadzone)
+            if parsed_report is None:
+                return
 
-                # Apply deadzone
-                self.left_y = 0 if abs(self.left_y) < self.deadzone else self.left_y
-                self.left_x = 0 if abs(self.left_x) < self.deadzone else self.left_x
-                self.right_x = 0 if abs(self.right_x) < self.deadzone else self.right_x
-                self.right_y = 0 if abs(self.right_y) < self.deadzone else self.right_y
+            self.axes = parsed_report.axes
+            self.buttons = parsed_report.buttons
 
-                # Parse button states (byte 5 in the Logitech RumblePad 2)
-                buttons = data[5]
+            self.left_x = self.axes.get("left_x", 0.0)
+            self.left_y = self.axes.get("left_y", 0.0)
+            self.right_x = self.axes.get("right_x", 0.0)
+            self.right_y = self.axes.get("right_y", 0.0)
 
-                # Check if RB is pressed then the intervention flag should be set
-                self.intervention_flag = data[6] in [2, 6, 10, 14]
-
-                # Check if RT is pressed
-                self.open_gripper_command = data[6] in [8, 10, 12]
-
-                # Check if LT is pressed
-                self.close_gripper_command = data[6] in [4, 6, 12]
-
-                # Check if Y/Triangle button (bit 7) is pressed for saving
-                # Check if X/Square button (bit 5) is pressed for failure
-                # Check if A/Cross button (bit 4) is pressed for rerecording
-                if buttons & 1 << 7:
-                    self.episode_end_status = TeleopEvents.SUCCESS
-                elif buttons & 1 << 5:
-                    self.episode_end_status = TeleopEvents.FAILURE
-                elif buttons & 1 << 4:
-                    self.episode_end_status = TeleopEvents.RERECORD_EPISODE
-                else:
-                    self.episode_end_status = None
+            actions = self.report_descriptor.actions
+            self.intervention_flag = self.buttons.get(actions.intervention, False)
+            self.open_gripper_command = self.buttons.get(actions.open_gripper, False)
+            self.close_gripper_command = self.buttons.get(actions.close_gripper, False)
+            self.episode_end_status = episode_status_from_buttons(self.buttons, actions)
 
         except OSError as e:
             logging.error(f"Error reading from gamepad: {e}")
 
     def get_deltas(self):
         """Get the current movement deltas from gamepad state."""
-        # Calculate deltas - invert as needed based on controller orientation
-        delta_x = -self.left_x * self.x_step_size  # Forward/backward
-        delta_y = -self.left_y * self.y_step_size  # Left/right
-        delta_z = -self.right_y * self.z_step_size  # Up/down
-
-        return delta_x, delta_y, delta_z
+        return self.report_descriptor.motion.get_deltas(
+            self.axes,
+            self.x_step_size,
+            self.y_step_size,
+            self.z_step_size,
+        )

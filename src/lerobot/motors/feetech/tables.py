@@ -251,7 +251,7 @@ MODEL_NUMBER_TABLE = {
     "sts3250": 2825,
     "sm8512bl": 11272,
     "scs0009": 1284,
-    "st3215": 68,
+    "st3215": 777,  # Waveshare ST3215 reports the same model number as STS3215.
 }
 
 MODEL_PROTOCOL = {
