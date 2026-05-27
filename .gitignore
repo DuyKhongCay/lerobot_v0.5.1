@@ -178,3 +178,6 @@ outputs/
 *.part
 
 !SO101/*
+MJDATA.TXT
+MJMODEL.TXT
+mjmodel.mjb
