@@ -73,7 +73,7 @@ from lerobot.teleoperators import (  # noqa: F401
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.utils import init_logging
-
+from lekiwi_labs.teleoperates.uarm_leader_config1 import uarm_leader_config1
 
 @dataclass
 class CalibrateConfig:
