@@ -47,7 +47,7 @@ if PYNPUT_AVAILABLE:
         logging.info(f"Could not import pynput: {e}")
 
 
-class xKeyboardTeleop(Teleoperator):
+class KeyboardTeleop(Teleoperator):
     """
     Teleop class to use keyboard inputs for control.
     """
