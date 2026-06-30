@@ -17,8 +17,15 @@
 import base64
 import json
 import logging
+import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
+
+# Add workspace directory to sys.path so we can import lekiwi_labs
+workspace_dir = Path(__file__).resolve().parents[5]
+if str(workspace_dir) not in sys.path:
+    sys.path.append(str(workspace_dir))
 
 import cv2
 import draccus
@@ -26,7 +33,25 @@ import zmq
 
 from .config_lekiwi import LeKiwiConfig, LeKiwiHostConfig
 from .lekiwi import LeKiwi
+from lekiwi_labs.cameras import grayscale_opencv
 
+from functools import partialmethod
+
+# Override LeKiwi kinematics parameters without modifying the original lekiwi.py script
+# You can change these values to calibrate your robot's speed and rotation
+WHEEL_RADIUS = 0.05  # default: 0.05 meters
+BASE_RADIUS = 0.125  # default: 0.125 meters
+
+LeKiwi._body_to_wheel_raw = partialmethod(  # type: ignore
+    LeKiwi._body_to_wheel_raw,
+    wheel_radius=WHEEL_RADIUS,
+    base_radius=BASE_RADIUS,
+)
+LeKiwi._wheel_raw_to_body = partialmethod(  # type: ignore
+    LeKiwi._wheel_raw_to_body,
+    wheel_radius=WHEEL_RADIUS,
+    base_radius=BASE_RADIUS,
+)
 
 @dataclass
 class LeKiwiServerConfig:

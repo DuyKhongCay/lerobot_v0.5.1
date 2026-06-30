@@ -46,6 +46,7 @@ from lerobot.teleoperators import (  # noqa: F401
     openarm_mini,
     so_leader,
 )
+from lekiwi_labs.teleoperates.uarm_leader_config1 import uarm_leader_config1
 
 COMPATIBLE_DEVICES = [
     "koch_follower",
@@ -58,6 +59,7 @@ COMPATIBLE_DEVICES = [
     "so101_follower",
     "so101_leader",
     "lekiwi",
+    "uarm_leader"
 ]
 
 
