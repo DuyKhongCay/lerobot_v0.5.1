@@ -46,6 +46,15 @@ from lerobot.teleoperators import (  # noqa: F401
     openarm_mini,
     so_leader,
 )
+
+import sys
+from pathlib import Path
+
+# Add workspace directory to sys.path so we can import lekiwi_labs
+workspace_dir = Path(__file__).resolve().parents[4]
+if str(workspace_dir) not in sys.path:
+    sys.path.append(str(workspace_dir))
+    
 from lekiwi_labs.teleoperates.uarm_leader_config1 import uarm_leader_config1
 
 COMPATIBLE_DEVICES = [

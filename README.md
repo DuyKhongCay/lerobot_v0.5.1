@@ -6,14 +6,14 @@ This repository is based on the **v0.5.1 tag** of the original [Hugging Face LeR
 
 ## What's Different?
 
-The primary difference in this repository is the seamless integration of custom-developed modules from the `lekiwi_labs` repository. We have embedded custom components—including **leaders**, **teleoperators**, **cameras**, and **kinematics calibration**—to leverage the full power of the LeRobot framework for our specific hardware setups.
+The primary difference in this repository is the seamless integration of custom-developed modules from the [`lekiwi_labs`](https://github.com/DuyKhongCay/lerobot-lekiwi-labs) repository. We have embedded custom components—including **leaders**, **teleoperators**, **cameras**, and **kinematics calibration**—to leverage the full power of the LeRobot framework for our specific hardware setups.
 
 ### Non-Intrusive Integration
 
 Instead of modifying the core `lerobot` source code directly, our custom modules dynamically inject themselves into the Python path and override specific behaviors at runtime. 
 
 #### 1. Dynamic Path Resolution
-We dynamically add the project root and specific `lekiwi_labs` directories to the Python path. This allows us to cleanly import configurations and modules (such as UArm leader configs) without altering the core structure:
+We dynamically add the project root and specific [`lekiwi_labs`] directories to the Python path. This allows us to cleanly import configurations and modules (such as UArm leader configs) without altering the core structure:
 
 ```python
 import sys
